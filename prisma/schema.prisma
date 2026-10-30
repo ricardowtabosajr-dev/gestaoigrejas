@@ -1,0 +1,387 @@
+// Banco de dados do Sistema de Gestão de Igreja.
+// PostgreSQL (Supabase). DATABASE_URL = pooler (porta 6543, usado pelo app/Vercel);
+// DIRECT_URL = conexão direta (porta 5432, usada por `prisma migrate`).
+// Enums são guardados como String (compatível com SQLite) e validados em src/constants.js + zod.
+// Valores monetários em centavos (Int) para evitar erros de ponto flutuante.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"] // rhel = runtime da Vercel
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────────── Estrutura da igreja (matriz / filiais) ─────────────
+
+model Church {
+  id          Int       @id @default(autoincrement())
+  name        String
+  type        String    @default("MATRIZ") // MATRIZ | FILIAL | CONGREGACAO | PONTO_DE_PREGACAO
+  status      String    @default("ATIVA") // PLANEJADA | EM_IMPLANTACAO | ATIVA | INATIVA
+  parentId    Int?
+  parent      Church?   @relation("ChurchTree", fields: [parentId], references: [id])
+  branches    Church[]  @relation("ChurchTree")
+  address     String?
+  city        String?
+  state       String?
+  phone       String?
+  foundedAt   DateTime?
+  plannedAt   DateTime? // previsão de abertura (expansão)
+  notes       String?
+  pastorId    Int?
+  pastor      Member?   @relation("ChurchPastor", fields: [pastorId], references: [id])
+  createdAt   DateTime  @default(now())
+
+  members       Member[]        @relation("MemberChurch")
+  users         User[]
+  cells         Cell[]
+  events        Event[]
+  transactions  Transaction[]
+  cashAccounts  CashAccount[]
+}
+
+// ───────────── Acesso: cargos, permissões e usuários ─────────────
+
+model Role {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique // Apóstolo, Pastor, Missionário, Diácono, Obreiro...
+  level       Int              @default(0) // hierarquia: maior = mais autoridade
+  isMinistry  Boolean          @default(true) // aparece em relatórios de departamentos
+  allChurches Boolean          @default(false) // enxerga todas as igrejas/filiais
+  permissions RolePermission[]
+  users       User[]
+  members     Member[]
+}
+
+model RolePermission {
+  roleId     Int
+  role       Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission String // ex.: "members:read", "finance:write"
+
+  @@id([roleId, permission])
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  name         String
+  passwordHash String
+  active       Boolean   @default(true)
+  mustChangePw Boolean   @default(false)
+  roleId       Int
+  role         Role      @relation(fields: [roleId], references: [id])
+  churchId     Int?
+  church       Church?   @relation(fields: [churchId], references: [id])
+  memberId     Int?      @unique
+  member       Member?   @relation(fields: [memberId], references: [id])
+  lastLoginAt  DateTime?
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime  @default(now())
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // CREATE | UPDATE | DELETE | LOGIN ...
+  entity    String
+  entityId  String?
+  details   String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+// ───────────── Membros e discipulado ─────────────
+
+model Member {
+  id            Int       @id @default(autoincrement())
+  churchId      Int
+  church        Church    @relation("MemberChurch", fields: [churchId], references: [id])
+  fullName      String
+  gender        String? // M | F
+  birthDate     DateTime?
+  maritalStatus String?
+  cpf           String?   @unique
+  email         String?
+  phone         String? // WhatsApp, só dígitos com DDI (ex.: 5511999998888)
+  address       String?
+  city          String?
+  state         String?
+  zip           String?
+  profession    String?
+  employer      String?
+  education     String?
+  photoUrl      String?
+  notes         String?
+  status        String    @default("ATIVO") // VISITANTE | ATIVO | INATIVO | AFASTADO | TRANSFERIDO | FALECIDO
+  roleId        Int? // cargo ministerial (Pastor, Diácono...)
+  role          Role?     @relation(fields: [roleId], references: [id])
+  receiveBirthdayMsg Boolean @default(true) // consentimento p/ mensagens automáticas
+
+  // Jornada de fé
+  conversionDate        DateTime? // aceitou a Jesus
+  baptismDate           DateTime?
+  baptismChurch         String?
+  membershipDate        DateTime? // data de entrada na igreja
+  leadershipSchoolDate  DateTime? // formatura na escola de líderes
+  discipleshipStartDate DateTime?
+
+  // Árvore de discipulado
+  discipulatorId Int?
+  discipulator   Member?  @relation("Discipleship", fields: [discipulatorId], references: [id])
+  disciples      Member[] @relation("Discipleship")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  discipleshipRecords  DiscipleshipRecord[] @relation("RecordDisciple")
+  recordsAsDiscipulator DiscipleshipRecord[] @relation("RecordDiscipulator")
+  achievements         Achievement[]
+  attendances          Attendance[]
+  cellMemberships      CellMember[]
+  cellsLed             Cell[]               @relation("CellLeader")
+  cellAttendances      CellAttendance[]
+  transactions         Transaction[]
+  registrations        Registration[]
+  messages             MessageLog[]
+  churchesPastored     Church[]             @relation("ChurchPastor")
+  user                 User?
+
+  @@index([churchId, status])
+  @@index([birthDate])
+}
+
+model DiscipleshipRecord {
+  id             Int      @id @default(autoincrement())
+  memberId       Int
+  member         Member   @relation("RecordDisciple", fields: [memberId], references: [id], onDelete: Cascade)
+  discipulatorId Int?
+  discipulator   Member?  @relation("RecordDiscipulator", fields: [discipulatorId], references: [id])
+  date           DateTime
+  type           String   @default("ENCONTRO") // ENCONTRO | CURSO | MENTORIA | ACONSELHAMENTO | ETAPA
+  title          String
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+model Achievement {
+  id          Int      @id @default(autoincrement())
+  memberId    Int
+  member      Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  title       String // ex.: "Concluiu Encontro com Deus", "Liderou 1º grupo"
+  category    String   @default("ESPIRITUAL")
+  description String?
+  date        DateTime
+}
+
+// ───────────── Células ─────────────
+
+model Cell {
+  id             Int        @id @default(autoincrement())
+  churchId       Int
+  church         Church     @relation(fields: [churchId], references: [id])
+  name           String
+  leaderId       Int?
+  leader         Member?    @relation("CellLeader", fields: [leaderId], references: [id])
+  weekday        Int? // 0=domingo..6=sábado
+  time           String? // "19:30"
+  address        String?
+  neighborhood   String?
+  status         String     @default("ATIVA") // ATIVA | PAUSADA | MULTIPLICADA | ENCERRADA
+  startedAt      DateTime?
+  parentCellId   Int? // célula-mãe (multiplicação)
+  parentCell     Cell?      @relation("CellMultiplication", fields: [parentCellId], references: [id])
+  childCells     Cell[]     @relation("CellMultiplication")
+  members        CellMember[]
+  meetings       CellMeeting[]
+}
+
+model CellMember {
+  cellId   Int
+  cell     Cell     @relation(fields: [cellId], references: [id], onDelete: Cascade)
+  memberId Int
+  member   Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+  leftAt   DateTime?
+
+  @@id([cellId, memberId])
+}
+
+model CellMeeting {
+  id          Int      @id @default(autoincrement())
+  cellId      Int
+  cell        Cell     @relation(fields: [cellId], references: [id], onDelete: Cascade)
+  date        DateTime
+  topic       String?
+  visitors    Int      @default(0)
+  conversions Int      @default(0)
+  offeringCents Int    @default(0)
+  notes       String?
+  attendances CellAttendance[]
+
+  @@unique([cellId, date])
+}
+
+model CellAttendance {
+  meetingId Int
+  meeting   CellMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  memberId  Int
+  member    Member      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  present   Boolean     @default(true)
+
+  @@id([meetingId, memberId])
+}
+
+// ───────────── Cultos, eventos e agenda ─────────────
+
+// Event cobre: cultos (recorrentes ou avulsos), eventos anuais (retiros, seminários,
+// congressos) e agenda externa (evangelismo, ação social, missões).
+model Event {
+  id               Int       @id @default(autoincrement())
+  churchId         Int
+  church           Church    @relation(fields: [churchId], references: [id])
+  title            String
+  kind             String    @default("CULTO") // CULTO | RETIRO | SEMINARIO | CONGRESSO | EVANGELISMO | ACAO_SOCIAL | MISSAO | REUNIAO | OUTRO
+  scope            String    @default("INTERNO") // INTERNO | EXTERNO
+  description      String?
+  location         String?
+  startsAt         DateTime
+  endsAt           DateTime?
+  recurrence       String    @default("NENHUMA") // NENHUMA | SEMANAL (gerado por /events/generate-weekly)
+  preacher         String?
+  theme            String?
+  visitorsCount    Int       @default(0)
+  conversionsCount Int       @default(0)
+  status           String    @default("AGENDADO") // AGENDADO | REALIZADO | CANCELADO
+  // inscrições online
+  allowRegistration Boolean  @default(false)
+  priceCents        Int      @default(0)
+  capacity          Int?
+  registrationDeadline DateTime?
+  createdAt        DateTime  @default(now())
+
+  attendances   Attendance[]
+  registrations Registration[]
+  transactions  Transaction[]
+
+  @@index([startsAt])
+  @@index([churchId, kind])
+}
+
+model Attendance {
+  eventId   Int
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  memberId  Int
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  checkedAt DateTime @default(now())
+
+  @@id([eventId, memberId])
+  @@index([memberId])
+}
+
+// ───────────── Financeiro / tesouraria ─────────────
+
+model CashAccount {
+  id           Int           @id @default(autoincrement())
+  churchId     Int
+  church       Church        @relation(fields: [churchId], references: [id])
+  name         String // Caixa geral, Conta Banco X, Fundo de construção...
+  openingCents Int           @default(0)
+  active       Boolean       @default(true)
+  transactions Transaction[]
+}
+
+model Transaction {
+  id            Int          @id @default(autoincrement())
+  churchId      Int
+  church        Church       @relation(fields: [churchId], references: [id])
+  cashAccountId Int
+  cashAccount   CashAccount  @relation(fields: [cashAccountId], references: [id])
+  direction     String // ENTRADA | SAIDA
+  category      String // DIZIMO | OFERTA | DOACAO | MANTENEDOR | OFERTA_ALCADA | CONSTRUCAO | EVENTO | INSCRICAO | OUTRA_ENTRADA | DESPESA_* ...
+  amountCents   Int
+  date          DateTime
+  method        String?      @default("DINHEIRO") // DINHEIRO | PIX | CARTAO | TRANSFERENCIA | BOLETO
+  memberId      Int? // dizimista/ofertante cadastrado
+  member        Member?      @relation(fields: [memberId], references: [id])
+  donorName     String? // ofertante externo
+  eventId       Int?
+  event         Event?       @relation(fields: [eventId], references: [id])
+  registrationId Int?        @unique
+  registration  Registration? @relation(fields: [registrationId], references: [id])
+  description   String?
+  createdById   Int?
+  createdAt     DateTime     @default(now())
+
+  @@index([churchId, date])
+  @@index([category])
+  @@index([memberId])
+}
+
+model Registration {
+  id          Int       @id @default(autoincrement())
+  eventId     Int
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  memberId    Int?
+  member      Member?   @relation(fields: [memberId], references: [id])
+  name        String
+  email       String?
+  phone       String?
+  cpf         String?
+  status      String    @default("PENDENTE") // PENDENTE | PAGO | CANCELADO | REEMBOLSADO | ISENTO
+  amountCents Int       @default(0)
+  checkedIn   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+
+  payments    Payment[]
+  transaction Transaction?
+
+  @@index([eventId, status])
+}
+
+model Payment {
+  id             Int          @id @default(autoincrement())
+  registrationId Int
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  provider       String // MOCK | MERCADOPAGO
+  providerRef    String? // id da preferência/cobrança no gateway
+  providerPaymentId String? @unique // id do pagamento confirmado (idempotência)
+  checkoutUrl    String?
+  status         String       @default("PENDENTE") // PENDENTE | APROVADO | RECUSADO | CANCELADO | REEMBOLSADO
+  amountCents    Int
+  rawPayload     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// ───────────── Comunicação automática ─────────────
+
+model MessageLog {
+  id        Int      @id @default(autoincrement())
+  memberId  Int?
+  member    Member?  @relation(fields: [memberId], references: [id])
+  channel   String   @default("WHATSAPP")
+  kind      String // ANIVERSARIO | AVISO ...
+  refKey    String?  @unique // idempotência: "BDAY:<memberId>:<ano>"
+  toNumber  String?
+  body      String
+  status    String   @default("PENDENTE") // PENDENTE | ENVIADA | FALHOU
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}

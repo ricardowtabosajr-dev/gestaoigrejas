@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout simulado</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main style="max-width:480px;margin:40px auto;padding:16px">
+    <div class="card">
+      <h3>Gateway de pagamento (simulado)</h3>
+      <p class="muted">Ambiente de desenvolvimento. Em produção, configure PAYMENT_PROVIDER=mercadopago.</p>
+      <button id="pay" class="btn primary">Simular pagamento aprovado</button>
+      <p id="out"></p>
+    </div>
+  </main>
+  <script src="mock-checkout.js"></script>
+</body>
+</html>

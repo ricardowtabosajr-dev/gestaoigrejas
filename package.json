@@ -1,0 +1,35 @@
+{
+  "name": "gestao-igreja",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de gestão e administração para igrejas",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:push": "prisma db push",
+    "db:seed": "node prisma/seed.js",
+    "test": "node --test \"tests/*.test.js\"",
+    "postinstall": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "build": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "bcryptjs": "^3.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.0.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "node-cron": "^4.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
