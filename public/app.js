@@ -94,7 +94,7 @@ const pages = {};
 pages.dashboard = { title: 'Painel', perm: null, async render(v) {
   const d = await api('/reports/dashboard');
   const b = has('messages:read') ? await api('/messages/birthdays/today') : [];
-  v.innerHTML = `<div class="grid">${stat(d.members.active, 'Membros ativos')}${stat(d.members.newThisMonth, 'Novos no mês')}${stat(d.faith.conversionsThisMonth, 'Conversões no mês')}${stat(d.faith.baptismsThisMonth, 'Batismos no mês')}${stat(d.cells.active, 'Células ativas')}${d.finance ? stat(money(d.finance.monthIncomeCents), 'Entradas do mês') + stat(money(d.finance.monthBalanceCents), 'Saldo do mês') : ''}</div>
+  v.innerHTML = `<div class="grid">${stat(d.members.active, 'Membros ativos')}${stat(d.members.newThisMonth, 'Novos no mês')}${stat(d.members.visitsWeek, 'Visitas (7 dias)')}${stat(d.faith.conversionsThisMonth, 'Conversões no mês')}${stat(d.faith.baptismsThisMonth, 'Batismos no mês')}${stat(d.cells.active, 'Células ativas')}${d.finance ? stat(money(d.finance.monthIncomeCents), 'Entradas do mês') + stat(money(d.finance.monthBalanceCents), 'Saldo do mês') : ''}</div>
   <div class="card"><h3>Próximos eventos</h3>${table([{ h: 'Data', v: (e) => fDateTime(e.startsAt) }, { h: 'Evento', v: (e) => e.title }, { h: 'Tipo', v: (e) => lbl(e.kind) }, { h: 'Local', v: (e) => e.location || '—' }], d.upcomingEvents)}</div>
   <div class="card"><h3>🎂 Aniversariantes de hoje</h3>${table([{ h: 'Nome', v: (m) => m.fullName }, { h: 'Igreja', v: (m) => m.church }, { h: 'WhatsApp', v: (m) => m.phone || 'sem telefone' }], b)}</div>`;
 } };
@@ -327,8 +327,49 @@ pages.users = { title: 'Usuários e Permissões', perm: 'users:read', async rend
   actions.toggleUser = guard(async (el) => { await api('/users/' + el.dataset.id, { method: 'PUT', body: { active: el.dataset.active !== 'true' } }); show('users'); });
 } };
 
+pages.visits = { title: 'Visitantes (QR code)', perm: 'members:read', async render(v) {
+  const FU = [['NOVO', 'Novo'], ['CONTATADO', 'Contatado'], ['AGENDADO', 'Visita agendada'], ['INTEGRADO', 'Integrado'], ['SEM_RETORNO', 'Sem retorno']];
+  const fuBadge = (s) => `<span class="badge ${{ NOVO: 'warn', CONTATADO: '', AGENDADO: '', INTEGRADO: 'ok', SEM_RETORNO: 'bad' }[s] || ''}">${esc((FU.find((x) => x[0] === s) || [0, s])[1])}</span>`;
+  let status = '';
+  const load = async () => {
+    const r = await api('/visits?pageSize=100' + (status ? '&status=' + status : ''));
+    $('#sum').innerHTML = FU.map(([k, t]) => stat(r.summary[k] || 0, t)).join('');
+    actions.items = r.items;
+    $('#list').innerHTML = table([
+      { h: 'Data', v: (x) => fDateTime(x.createdAt) }, { h: 'Visitante', html: (x) => `<b>${esc(x.member.fullName)}</b>${x.isFirstVisit ? ' <span class="badge ok">1ª visita</span>' : ' <span class="badge">retorno</span>'}` },
+      { h: 'WhatsApp', html: (x) => (x.member.phone ? `<a href="https://wa.me/${esc(x.member.phone.length <= 11 ? '55' + x.member.phone : x.member.phone)}" target="_blank" rel="noopener">${esc(x.member.phone)}</a>` : '—') },
+      { h: 'Culto', v: (x) => x.event?.title || '—' }, { h: 'Como conheceu', v: (x) => x.howKnew || '—' },
+      { h: 'Oração', html: (x) => `<span title="${esc(x.prayerRequest || '')}">${esc((x.prayerRequest || '—').slice(0, 40))}${(x.prayerRequest || '').length > 40 ? '…' : ''}</span>` },
+      { h: 'Quer contato', v: (x) => (x.wantsContact ? 'Sim' : 'Não') }, { h: 'Acompanhamento', html: (x) => fuBadge(x.followUpStatus) },
+      { h: '', html: (x) => (has('members:write') ? `<button class="btn small" data-act="followUp" data-id="${x.id}">Acompanhar</button>` : '') },
+    ], r.items, 'Nenhuma visita registrada ainda. Imprima o QR code e deixe na entrada da igreja.');
+  };
+  v.innerHTML = `<div class="toolbar"><select id="fSt"><option value="">Todos os status</option>${FU.map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select><span class="grow"></span><button class="btn primary" data-act="qr">📱 QR code de visitantes</button></div><div class="grid" id="sum"></div><div class="card" id="list"></div>`;
+  $('#fSt').onchange = (e) => { status = e.target.value; load(); };
+  await load();
+  actions.followUp = guard(async (el) => {
+    const x = actions.items.find((i) => i.id == el.dataset.id);
+    formModal({ title: 'Acompanhamento: ' + x.member.fullName, fields: [
+      { name: 'followUpStatus', label: 'Situação', type: 'select', required: true, options: FU },
+      { name: 'followUpNotes', label: 'Anotações do contato', type: 'textarea', nullable: true }], values: x,
+    onSubmit: async (b) => { await api('/visits/' + x.id, { method: 'PUT', body: b }); load(); } });
+  });
+  actions.qr = guard(async () => {
+    const churches = (await api('/churches?pageSize=200')).items;
+    const show = async (id) => {
+      const q = await api('/visits/qr?churchId=' + id);
+      $('#qrBox').innerHTML = `<div class="poster" style="text-align:center"><h2>${esc(q.church)}</h2><p style="font-size:20px"><b>Seja bem-vindo(a)!</b><br>Escaneie e registre sua visita</p><div style="width:min(300px,70vw);margin:0 auto">${q.svg}</div><p class="muted" style="word-break:break-all">${esc(q.url)}</p></div>`;
+    };
+    openModal(`<div class="no-print"><h3>QR code de visitantes</h3><label>Igreja<select id="qrChurch">${churches.map((c) => `<option value="${c.id}" ${c.id === me.churchId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label></div><div id="qrBox"></div><div class="modal-actions no-print"><button class="btn danger" id="qrRotate">Gerar novo QR (invalida o atual)</button><button class="btn" data-act="closeModal">Fechar</button><button class="btn primary" id="qrPrint">🖨 Imprimir cartaz</button></div>`);
+    await show($('#qrChurch').value);
+    $('#qrChurch').onchange = guard((e) => show(e.target.value));
+    $('#qrPrint').onclick = () => window.print();
+    $('#qrRotate').onclick = guard(async () => { if (confirm('O QR impresso atual deixará de funcionar. Continuar?')) { await api('/visits/qr/rotate', { method: 'POST', body: { churchId: Number($('#qrChurch').value) } }); await show($('#qrChurch').value); toast('Novo QR gerado: reimprima o cartaz'); } });
+  });
+} };
+
 // ───────────── Navegação / sessão ─────────────
-const NAV = [['dashboard', '📊 Painel'], ['agenda', '📅 Cultos e Agenda'], ['members', '👥 Membros'], ['cells', '🏠 Células'], ['finance', '💰 Financeiro'], ['registrations', '🎟 Inscrições'], ['reports', '📈 Relatórios'], ['messages', '🎂 Aniversariantes'], ['churches', '⛪ Igrejas'], ['users', '🔐 Usuários']];
+const NAV = [['dashboard', '📊 Painel'], ['agenda', '📅 Cultos e Agenda'], ['members', '👥 Membros'], ['visits', '🙋 Visitantes'], ['cells', '🏠 Células'], ['finance', '💰 Financeiro'], ['registrations', '🎟 Inscrições'], ['reports', '📈 Relatórios'], ['messages', '🎂 Aniversariantes'], ['churches', '⛪ Igrejas'], ['users', '🔐 Usuários']];
 
 async function show(name) {
   const page = pages[name] && (!pages[name].perm || has(pages[name].perm)) ? pages[name] : pages.dashboard;

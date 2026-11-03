@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bem-vindo! Registro de visitante</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { background: var(--brand); }
+    .v-wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+    .v-head { color: #fff; text-align: center; padding: 8px 0 18px; }
+    .v-head h1 { margin: 6px 0 2px; font-size: 24px; }
+    .v-head p { margin: 0; opacity: .85; }
+    .v-card { background: var(--card); color: var(--ink); border-radius: 14px; padding: 20px; }
+    .v-card input, .v-card select, .v-card textarea { font-size: 16px; padding: 12px; }
+    .v-card .btn.primary { width: 100%; padding: 14px; font-size: 16px; margin-top: 6px; }
+    .hp { position: absolute; left: -9999px; height: 0; overflow: hidden; }
+    .v-ok { text-align: center; padding: 10px 0; }
+    .v-ok .big { font-size: 46px; }
+    small.hint { color: var(--muted); display: block; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="v-wrap">
+    <div class="v-head">
+      <div style="font-size:34px">✝</div>
+      <h1 id="church">Bem-vindo!</h1>
+      <p id="event">Ficamos felizes com a sua visita</p>
+    </div>
+    <div class="v-card" id="card">
+      <form id="form" novalidate>
+        <label>Seu nome completo *<input name="name" autocomplete="name" required minlength="3"></label>
+        <label>WhatsApp com DDD *<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-9999" required></label>
+        <label>E-mail<input name="email" type="email" autocomplete="email"></label>
+        <label>Data de nascimento<input name="birthDate" type="date"></label>
+        <label>Como conheceu a igreja?
+          <select name="howKnew"><option value=""></option><option>Convite de um amigo/familiar</option><option>Redes sociais</option><option>Passei em frente</option><option>Evento ou evangelismo</option><option>Já participei antes</option><option>Outro</option></select>
+        </label>
+        <label>Pedido de oração<textarea name="prayerRequest" rows="3" maxlength="500" placeholder="Opcional"></textarea></label>
+        <label class="check"><input type="checkbox" name="wantsContact" checked> Quero receber o contato da igreja</label>
+        <div class="hp" aria-hidden="true"><label>Site<input name="website" tabindex="-1" autocomplete="off"></label></div>
+        <label class="check"><input type="checkbox" name="consent" required> <span>Autorizo a igreja a guardar meus dados e entrar em contato comigo (inclusive por WhatsApp, com mensagens como felicitações). Posso pedir a exclusão a qualquer momento. *</span></label>
+        <p class="error" id="err"></p>
+        <button class="btn primary" id="send">Registrar minha visita</button>
+        <small class="hint">Seus dados ficam somente com a igreja.</small>
+      </form>
+    </div>
+  </div>
+  <script src="visitante.js"></script>
+</body>
+</html>

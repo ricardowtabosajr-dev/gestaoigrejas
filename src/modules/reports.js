@@ -24,7 +24,7 @@ router.get('/dashboard', wrap(async (req, res) => {
   const som = startOfMonth();
   const canFinance = req.user.permissions.has('finance:read');
   const memberWhere = await scopedWhere(req);
-  const [active, newThisMonth, conversions, baptisms, cells, upcoming, fin, visitors] = await Promise.all([
+  const [active, newThisMonth, conversions, baptisms, cells, upcoming, fin, visitors, visitsWeek] = await Promise.all([
     prisma.member.count({ where: { ...memberWhere, status: 'ATIVO' } }),
     prisma.member.count({ where: { ...memberWhere, createdAt: { gte: som } } }),
     prisma.member.count({ where: { ...memberWhere, conversionDate: { gte: som } } }),
@@ -33,10 +33,11 @@ router.get('/dashboard', wrap(async (req, res) => {
     prisma.event.findMany({ where: await scopedWhere(req, { startsAt: { gte: new Date() }, status: 'AGENDADO' }), orderBy: { startsAt: 'asc' }, take: 6, select: { id: true, title: true, kind: true, scope: true, startsAt: true, location: true } }),
     canFinance ? prisma.transaction.groupBy({ by: ['direction'], where: await scopedWhere(req, { date: { gte: som } }), _sum: { amountCents: true } }) : [],
     prisma.member.count({ where: { ...memberWhere, status: 'VISITANTE' } }),
+    prisma.visit.count({ where: await scopedWhere(req, { createdAt: { gte: new Date(Date.now() - 7 * 86400000) } }) }),
   ]);
   const f = (d) => fin.find((x) => x.direction === d)?._sum.amountCents ?? 0;
   res.json({
-    members: { active, newThisMonth, visitors },
+    members: { active, newThisMonth, visitors, visitsWeek },
     faith: { conversionsThisMonth: conversions, baptismsThisMonth: baptisms },
     cells: { active: cells },
     upcomingEvents: upcoming,

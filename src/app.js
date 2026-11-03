@@ -18,6 +18,8 @@ app.use(rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: true, lega
 
 // Rotas públicas / sem sessão
 app.use('/api/auth', require('./modules/auth').router);
+const visits = require('./modules/visits');
+app.use('/api/public/visit', visits.pub);
 app.use('/api/public', registrations.pub);
 app.use('/api/webhooks', registrations.webhooks);
 
@@ -38,6 +40,7 @@ api.use('/cells', require('./modules/cells'));
 api.use('/events', require('./modules/events'));
 api.use('/finance', require('./modules/finance'));
 api.use('/registrations', registrations.admin);
+api.use('/visits', visits.admin);
 api.use('/messages', require('./modules/messages'));
 api.use('/reports', require('./modules/reports'));
 app.use('/api', api);

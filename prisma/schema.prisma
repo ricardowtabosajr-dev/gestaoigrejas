@@ -32,6 +32,7 @@ model Church {
   foundedAt   DateTime?
   plannedAt   DateTime? // previsão de abertura (expansão)
   notes       String?
+  visitToken  String    @unique @default(uuid()) // segredo do QR code de visitantes (pode ser rotacionado)
   pastorId    Int?
   pastor      Member?   @relation("ChurchPastor", fields: [pastorId], references: [id])
   createdAt   DateTime  @default(now())
@@ -42,6 +43,7 @@ model Church {
   events        Event[]
   transactions  Transaction[]
   cashAccounts  CashAccount[]
+  visits        Visit[]
 }
 
 // ───────────── Acesso: cargos, permissões e usuários ─────────────
@@ -153,6 +155,7 @@ model Member {
   transactions         Transaction[]
   registrations        Registration[]
   messages             MessageLog[]
+  visits               Visit[]
   churchesPastored     Church[]             @relation("ChurchPastor")
   user                 User?
 
@@ -272,6 +275,7 @@ model Event {
   attendances   Attendance[]
   registrations Registration[]
   transactions  Transaction[]
+  visits        Visit[]
 
   @@index([startsAt])
   @@index([churchId, kind])
@@ -286,6 +290,30 @@ model Attendance {
 
   @@id([eventId, memberId])
   @@index([memberId])
+}
+
+// ───────────── Visitantes (check-in por QR code) ─────────────
+
+// Cada leitura do QR gera uma Visit; a pessoa fica como Member com status VISITANTE
+// (reaproveitada pelo telefone em novas visitas).
+model Visit {
+  id             Int      @id @default(autoincrement())
+  churchId       Int
+  church         Church   @relation(fields: [churchId], references: [id])
+  memberId       Int
+  member         Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  eventId        Int? // culto em andamento no momento da leitura
+  event          Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  isFirstVisit   Boolean  @default(true)
+  howKnew        String? // como conheceu a igreja
+  prayerRequest  String?
+  wantsContact   Boolean  @default(true)
+  followUpStatus String   @default("NOVO") // NOVO | CONTATADO | AGENDADO | INTEGRADO | SEM_RETORNO
+  followUpNotes  String?
+  createdAt      DateTime @default(now())
+
+  @@index([churchId, createdAt])
+  @@index([followUpStatus])
 }
 
 // ───────────── Financeiro / tesouraria ─────────────

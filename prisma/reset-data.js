@@ -16,6 +16,7 @@ async function main() {
 
   const [r] = await prisma.$transaction([
     prisma.$queryRaw`select 1`,
+    prisma.visit.deleteMany(),
     prisma.messageLog.deleteMany(),
     prisma.payment.deleteMany(),
     prisma.transaction.deleteMany(),
