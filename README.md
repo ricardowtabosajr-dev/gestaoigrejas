@@ -38,6 +38,7 @@ Pontos de atenção na Vercel: não há processo contínuo (por isso o cron é d
 | Financeiro | `finance.js` | caixas, dízimos, ofertas, doações, mantenedores, oferta alçada, construção, entradas de eventos, saídas; extrato por membro; exclusões auditadas |
 | Inscrições | `registrations.js`, `services/payments.js` | página pública, gateway (Mercado Pago ou simulado), webhook idempotente, lista pago/pendente atualizada a cada 5 s, lança entrada no caixa ao pagar |
 | Aniversariantes | `services/birthdays.js`, `jobs/scheduler.js` | cron diário, mensagem editável (`{nome}`, `{igreja}`), idempotente por membro/ano, respeita consentimento, log de envios |
+| Visitantes (QR code) | `visits.js`, `public/visitante.html` | QR por igreja (rotacionável), formulário público com consentimento LGPD, reconhecimento de retorno por telefone, presença no culto em andamento, boas-vindas por WhatsApp (modelo `welcome_template`, uma vez por pessoa), painel de acompanhamento |
 | Relatórios | `reports.js` | painel, frequência por culto, presentes/ausentes por membro, crescimento, finanças, desempenho por departamento |
 
 ## Segurança e permissões

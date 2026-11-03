@@ -7,6 +7,7 @@ const config = require('../config');
 const prisma = require('../lib/prisma');
 const { HttpError, wrap } = require('../lib/http');
 const { audit } = require('../lib/audit');
+const { getProvider, normalizeNumber } = require('../services/whatsapp');
 const { requirePermission, scopedWhere, assertChurchAccess } = require('../middleware/auth');
 
 const STATUSES = ['NOVO', 'CONTATADO', 'AGENDADO', 'INTEGRADO', 'SEM_RETORNO'];
@@ -80,8 +81,34 @@ pub.post('/:token', submitLimiter, wrap(async (req, res) => {
     }
     return { visit, returning, firstName: member.fullName.split(/\s+/)[0] };
   });
+  if (result.visit.isFirstVisit && data.wantsContact) await sendWelcome(result.visit.memberId, church.name, result.firstName, data.phone);
   res.status(201).json({ ok: true, name: result.firstName, returning: result.returning, church: church.name });
 }));
+
+const DEFAULT_WELCOME =
+  'Olá, {nome}! 🙏 Foi uma alegria receber você na {igreja}. Deus abençoe a sua vida! ' +
+  'Se precisar de oração ou quiser saber mais sobre nossos cultos e células, é só responder esta mensagem.';
+
+// Boas-vindas por WhatsApp, uma única vez por pessoa (refKey). Nunca derruba o registro da visita:
+// falhas ficam no log de mensagens. Aguardado antes da resposta porque na Vercel a função congela depois dela.
+async function sendWelcome(memberId, churchName, firstName, phone) {
+  const refKey = `WELCOME:${memberId}`;
+  try {
+    if (await prisma.messageLog.findUnique({ where: { refKey } })) return;
+    const tpl = (await prisma.setting.findUnique({ where: { key: 'welcome_template' } }))?.value || DEFAULT_WELCOME;
+    const body = tpl.replaceAll('{nome}', firstName).replaceAll('{igreja}', churchName);
+    const to = normalizeNumber(phone);
+    const log = await prisma.messageLog.create({ data: { memberId, kind: 'BOAS_VINDAS', refKey, toNumber: to, body } });
+    try {
+      await Promise.race([getProvider().send(to, body), new Promise((_, rej) => setTimeout(() => rej(new Error('Tempo esgotado no envio')), 8000))]);
+      await prisma.messageLog.update({ where: { id: log.id }, data: { status: 'ENVIADA', sentAt: new Date() } });
+    } catch (err) {
+      await prisma.messageLog.update({ where: { id: log.id }, data: { status: 'FALHOU', error: String(err.message).slice(0, 500) } });
+    }
+  } catch (err) {
+    console.error('[visitas] boas-vindas:', err.message);
+  }
+}
 
 // ───────────── Admin: QR code, lista e acompanhamento ─────────────
 const admin = express.Router();
