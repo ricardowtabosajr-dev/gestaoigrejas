@@ -40,7 +40,9 @@ $('#form').addEventListener('submit', async (e) => {
     const res = await fetch('/api/public/visit/' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.details?.map?.((d) => d.mensagem).join(' · ') || data.error || 'Não foi possível registrar');
-    msg(notice('🙏', `Seja bem-vindo(a), ${data.name}!`, data.returning ? 'Que bom ver você de novo! Sua visita foi registrada.' : 'Sua visita foi registrada. Em breve alguém da nossa equipe entrará em contato.'));
+    msg(data.alreadyRegistered
+      ? notice('✅', `Que bom ver você, ${data.name}!`, 'Este WhatsApp já está cadastrado conosco, então não precisa se registrar de novo. Sua presença de hoje foi confirmada.')
+      : notice('🙏', `Seja bem-vindo(a), ${data.name}!`, 'Seu cadastro foi feito. Em breve alguém da nossa equipe entrará em contato.'));
   } catch (err) {
     $('#err').textContent = err.message;
     $('#send').disabled = false;

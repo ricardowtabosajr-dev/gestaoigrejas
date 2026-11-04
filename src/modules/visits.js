@@ -62,27 +62,27 @@ pub.post('/:token', submitLimiter, wrap(async (req, res) => {
 
   const result = await prisma.$transaction(async (tx) => {
     let member = await tx.member.findFirst({ where: { churchId: church.id, phone: { in: variants } } });
-    let returning = !!member;
-    if (!member) {
-      member = await tx.member.create({
-        data: {
-          churchId: church.id, fullName: data.name, phone: data.phone, email: data.email ?? null, birthDate: data.birthDate ?? null,
-          status: 'VISITANTE', receiveBirthdayMsg: true, // o consentimento do formulário cobre contato e felicitações
-          notes: 'Cadastrado pelo QR code de visitantes',
-        },
-      });
+    const firstName = (m) => m.fullName.split(/\s+/)[0];
+    // Telefone já cadastrado: não cria novo cadastro nem nova visita; só confirma a presença no culto em andamento.
+    if (member) {
+      if (ev) await tx.attendance.upsert({ where: { eventId_memberId: { eventId: ev.id, memberId: member.id } }, create: { eventId: ev.id, memberId: member.id }, update: {} });
+      return { alreadyRegistered: true, firstName: firstName(member) };
     }
-    const previous = returning ? await tx.visit.count({ where: { memberId: member.id } }) : 0;
-    const visit = await tx.visit.create({
-      data: { churchId: church.id, memberId: member.id, eventId: ev?.id ?? null, isFirstVisit: previous === 0, howKnew: data.howKnew ?? null, prayerRequest: data.prayerRequest ?? null, wantsContact: data.wantsContact },
+    member = await tx.member.create({
+      data: {
+        churchId: church.id, fullName: data.name, phone: data.phone, email: data.email ?? null, birthDate: data.birthDate ?? null,
+        status: 'VISITANTE', receiveBirthdayMsg: true, // o consentimento do formulário cobre contato e felicitações
+        notes: 'Cadastrado pelo QR code de visitantes',
+      },
     });
-    if (ev) {
-      await tx.attendance.upsert({ where: { eventId_memberId: { eventId: ev.id, memberId: member.id } }, create: { eventId: ev.id, memberId: member.id }, update: {} });
-    }
-    return { visit, returning, firstName: member.fullName.split(/\s+/)[0] };
+    await tx.visit.create({
+      data: { churchId: church.id, memberId: member.id, eventId: ev?.id ?? null, isFirstVisit: true, howKnew: data.howKnew ?? null, prayerRequest: data.prayerRequest ?? null, wantsContact: data.wantsContact },
+    });
+    if (ev) await tx.attendance.create({ data: { eventId: ev.id, memberId: member.id } });
+    return { alreadyRegistered: false, memberId: member.id, firstName: firstName(member) };
   });
-  if (result.visit.isFirstVisit && data.wantsContact) await sendWelcome(result.visit.memberId, church.name, result.firstName, data.phone);
-  res.status(201).json({ ok: true, name: result.firstName, returning: result.returning, church: church.name });
+  if (!result.alreadyRegistered && data.wantsContact) await sendWelcome(result.memberId, church.name, result.firstName, data.phone);
+  res.status(201).json({ ok: true, name: result.firstName, alreadyRegistered: result.alreadyRegistered, church: church.name });
 }));
 
 const DEFAULT_WELCOME =
