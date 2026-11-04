@@ -52,20 +52,46 @@ const visitSchema = z.object({
   website: z.string().max(0).optional(), // isca (honeypot): robôs preenchem, pessoas não
 });
 
+const phoneSchema = z.preprocess((v) => String(v ?? '').replace(/\D/g, ''), z.string().min(10, 'Informe o WhatsApp com DDD').max(13, 'Telefone inválido'));
+const firstName = (m) => m.fullName.split(/\s+/)[0];
+
+// Normaliza para comparar com o cadastro: aceita com ou sem DDI 55.
+function phoneVariants(phone) {
+  const local = phone.length > 11 ? phone.slice(-11) : phone;
+  return [...new Set([phone, local, `55${local}`])];
+}
+
+const confirmAttendance = (db, ev, memberId) => ev
+  ? db.attendance.upsert({ where: { eventId_memberId: { eventId: ev.id, memberId } }, create: { eventId: ev.id, memberId }, update: {} })
+  : null;
+
+// Etapa 1 do QR: o visitante informa só o celular. Se já houver cadastro, confirma a presença e devolve apenas o
+// primeiro nome (nunca outros dados); se não, libera o formulário. Limite próprio para dificultar varredura de números.
+const checkLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 12, standardHeaders: true, legacyHeaders: false, message: { error: 'Muitas tentativas. Aguarde alguns minutos.' } });
+
+pub.post('/:token/check', checkLimiter, wrap(async (req, res) => {
+  const church = await churchByToken(req.params.token);
+  const phone = phoneSchema.parse(req.body?.phone);
+  const [member, ev] = await Promise.all([
+    prisma.member.findFirst({ where: { churchId: church.id, phone: { in: phoneVariants(phone) } }, select: { id: true, fullName: true } }),
+    currentEvent(church.id),
+  ]);
+  if (!member) return res.json({ registered: false });
+  await confirmAttendance(prisma, ev, member.id);
+  res.json({ registered: true, name: firstName(member), church: church.name });
+}));
+
 pub.post('/:token', submitLimiter, wrap(async (req, res) => {
   const church = await churchByToken(req.params.token);
   const data = visitSchema.parse(req.body);
-  // Normaliza para comparar com o cadastro: aceita com ou sem DDI 55.
-  const local = data.phone.length > 11 ? data.phone.slice(-11) : data.phone;
-  const variants = [...new Set([data.phone, local, `55${local}`])];
+  const variants = phoneVariants(data.phone);
   const ev = await currentEvent(church.id);
 
   const result = await prisma.$transaction(async (tx) => {
     let member = await tx.member.findFirst({ where: { churchId: church.id, phone: { in: variants } } });
-    const firstName = (m) => m.fullName.split(/\s+/)[0];
-    // Telefone já cadastrado: não cria novo cadastro nem nova visita; só confirma a presença no culto em andamento.
+    // Telefone já cadastrado (ex.: cadastro simultâneo): não cria novo cadastro nem nova visita; só confirma a presença.
     if (member) {
-      if (ev) await tx.attendance.upsert({ where: { eventId_memberId: { eventId: ev.id, memberId: member.id } }, create: { eventId: ev.id, memberId: member.id }, update: {} });
+      await confirmAttendance(tx, ev, member.id);
       return { alreadyRegistered: true, firstName: firstName(member) };
     }
     member = await tx.member.create({

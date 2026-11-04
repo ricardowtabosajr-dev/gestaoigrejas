@@ -28,7 +28,14 @@
       <p id="event">Ficamos felizes com a sua visita</p>
     </div>
     <div class="v-card" id="card">
-      <form id="form" novalidate>
+      <form id="check" novalidate>
+        <p style="margin-top:0">Para começar, informe o seu WhatsApp. Se você já nos visitou, é só isso!</p>
+        <label>WhatsApp com DDD *<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-9999" required></label>
+        <p class="error" id="checkErr"></p>
+        <button class="btn primary" id="checkBtn">Continuar</button>
+      </form>
+      <form id="form" class="hidden" novalidate>
+        <p style="margin-top:0">Ainda não temos o seu cadastro. Complete os dados abaixo:</p>
         <label>Seu nome completo *<input name="name" autocomplete="name" required minlength="3"></label>
         <label>WhatsApp com DDD *<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 99999-9999" required></label>
         <label>E-mail<input name="email" type="email" autocomplete="email"></label>

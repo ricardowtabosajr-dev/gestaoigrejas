@@ -26,6 +26,26 @@ async function init() {
   }
 }
 
+$('#check').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const phone = e.target.elements.phone.value;
+  $('#checkErr').textContent = '';
+  $('#checkBtn').disabled = true;
+  try {
+    const res = await fetch('/api/public/visit/' + encodeURIComponent(token) + '/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.details?.map?.((d) => d.mensagem).join(' · ') || data.error || 'Não foi possível verificar');
+    if (data.registered) return msg(notice('🙏', `Que alegria ter você de volta, ${data.name}!`, `Ficamos muito felizes com a sua presença novamente na ${data.church}. Sua presença de hoje foi confirmada.`));
+    $('#check').classList.add('hidden');
+    $('#form').classList.remove('hidden');
+    $('#form').elements.phone.value = phone;
+    $('#form').elements.name.focus();
+  } catch (err) {
+    $('#checkErr').textContent = err.message;
+  }
+  $('#checkBtn').disabled = false;
+});
+
 $('#form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target.elements;
